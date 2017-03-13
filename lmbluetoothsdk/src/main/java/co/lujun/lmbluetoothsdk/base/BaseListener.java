@@ -28,6 +28,8 @@ package co.lujun.lmbluetoothsdk.base;
 
 import android.bluetooth.BluetoothDevice;
 
+import java.util.UUID;
+
 /**
  * Author: lujun(http://blog.lujun.co)
  * Date: 2016-1-15 10:53

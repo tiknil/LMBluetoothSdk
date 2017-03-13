@@ -20,10 +20,12 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
+import android.util.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.UUID;
 
@@ -59,6 +61,7 @@ public class BluetoothService {
 
     /**
      * Set bluetooth listener.
+     *
      * @param listener BaseListener
      */
     public synchronized void setBluetoothListener(BaseListener listener) {
@@ -67,6 +70,7 @@ public class BluetoothService {
 
     /**
      * Get current SDP recorded UUID.
+     *
      * @return an UUID
      */
     public UUID getAppUuid() {
@@ -75,6 +79,7 @@ public class BluetoothService {
 
     /**
      * Set a UUID for SDP record.
+     *
      * @param uuid an UUID
      */
     public void setAppUuid(UUID uuid) {
@@ -83,11 +88,12 @@ public class BluetoothService {
 
     /**
      * Set the current state of the connection.
-     * @param state  An integer defining the current connection state
+     *
+     * @param state An integer defining the current connection state
      */
     private synchronized void setState(int state) {
         mState = state;
-        if (mBluetoothListener != null){
+        if (mBluetoothListener != null) {
             mBluetoothListener.onBluetoothServiceStateChanged(state);
         }
     }
@@ -96,6 +102,7 @@ public class BluetoothService {
      * Get the current state of connection.
      * Possible return values are STATE_NONE, STATE_LISTEN, STATE_CONNECTING, STATE_CONNECTED,
      * STATE_DISCONNECTED, STATE_UNKNOWN in {@link co.lujun.lmbluetoothsdk.base.State} class.
+     *
      * @return the connection state
      */
     public int getState() {
@@ -111,7 +118,7 @@ public class BluetoothService {
             mConnectThread = null;
         }
         if (mConnectedThread != null) {
-            mConnectedThread.cancel(); 
+            mConnectedThread.cancel();
             mConnectedThread = null;
         }
         if (mAcceptThread == null) {
@@ -123,6 +130,7 @@ public class BluetoothService {
 
     /**
      * Start the ConnectThread to initiate a connection to a remote device.
+     *
      * @param device The BluetoothDevice to connect
      */
     public synchronized void connect(BluetoothDevice device) {
@@ -141,9 +149,10 @@ public class BluetoothService {
 
     /**
      * Start the ConnectedThread to begin managing a Bluetooth connection.
+     *
      * @param socket The BluetoothSocket on which the connection was made
      */
-    public synchronized void connected(BluetoothSocket socket) {
+    public synchronized void connected(BluetoothSocketWrapper socket) {
         if (mConnectThread != null) {
             mConnectThread.cancel();
             mConnectThread = null;
@@ -158,7 +167,7 @@ public class BluetoothService {
         }
         mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
-        mBluetoothDevice = socket.getRemoteDevice();
+        mBluetoothDevice = socket.getUnderlyingSocket().getRemoteDevice();
         setState(State.STATE_CONNECTED);
     }
 
@@ -184,6 +193,7 @@ public class BluetoothService {
 
     /**
      * Write to the ConnectedThread in an unsynchronized manner.
+     *
      * @param out The bytes to write
      */
     public void write(byte[] out) {
@@ -229,9 +239,10 @@ public class BluetoothService {
 
     /**
      * Get connected device.
+     *
      * @return a bluetooth device
      */
-    public BluetoothDevice getConnectedDevice(){
+    public BluetoothDevice getConnectedDevice() {
         return mBluetoothDevice;
     }
 
@@ -243,20 +254,21 @@ public class BluetoothService {
     private class AcceptThread extends Thread {
 
         private final BluetoothServerSocket mmServerSocket;
-        
+
         public AcceptThread() {
             BluetoothServerSocket tmp = null;
             try {
                 tmp = mAdapter.listenUsingRfcommWithServiceRecord(TAG, mAppUuid);
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
             mmServerSocket = tmp;
         }
-        
+
         public void run() {
-            BluetoothSocket socket = null;
+            BluetoothSocketWrapper socket;
             while (mState != co.lujun.lmbluetoothsdk.base.State.STATE_CONNECTED) {
                 try {
-                    socket = mmServerSocket.accept();
+                    socket = new NativeBluetoothSocket(mmServerSocket.accept());
                 } catch (IOException e) {
                     break;
                 }
@@ -272,18 +284,20 @@ public class BluetoothService {
                             case co.lujun.lmbluetoothsdk.base.State.STATE_CONNECTED:
                                 try {
                                     socket.close();
-                                } catch (IOException e) {}
+                                } catch (IOException e) {
+                                }
                                 break;
                         }
                     }
                 }
             }
         }
-        
+
         public void cancel() {
             try {
                 mmServerSocket.close();
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
         }
     }
 
@@ -294,38 +308,58 @@ public class BluetoothService {
      */
     private class ConnectThread extends Thread {
 
-        private final BluetoothSocket mmSocket;
-        
+        private BluetoothSocketWrapper mmSocket;
+
         public ConnectThread(BluetoothDevice device) {
             BluetoothSocket tmp = null;
             try {
                 tmp = device.createRfcommSocketToServiceRecord(mAppUuid);
-            } catch (IOException e) {}
-            mmSocket = tmp;
+            } catch (IOException e) {
+            }
+            mmSocket = new NativeBluetoothSocket(tmp);
         }
-        
+
         public void run() {
             mAdapter.cancelDiscovery();
             try {
                 mmSocket.connect();
             } catch (IOException e) {
-                setState(co.lujun.lmbluetoothsdk.base.State.STATE_LISTEN);
+                boolean success = false;
+                Log.d("conn", "Errore durante la connessone con socket nativo", e);
                 try {
-                    mmSocket.close();
-                } catch (IOException e2) {}
-                BluetoothService.this.start();
-                return;
+                    mmSocket = new FallbackBluetoothSocket(mmSocket.getUnderlyingSocket());
+                    Thread.sleep(500);
+                    mmSocket.connect();
+                    success = true;
+                } catch (IOException e2) {
+                    Log.d("conn", "Errore durante la connessone con socket di fallback", e2);
+                } catch (InterruptedException ie1) {
+                    Log.d("conn", "Timeout attesa thread", ie1);
+                } catch (FallbackException fe1) {
+                    Log.d("conn", "Fallback exception", fe1);
+                }
+
+                if (!success) {
+                    setState(co.lujun.lmbluetoothsdk.base.State.STATE_LISTEN);
+                    try {
+                        mmSocket.close();
+                    } catch (IOException e2) {
+                    }
+                    BluetoothService.this.start();
+                    return;
+                }
             }
             synchronized (BluetoothService.this) {
                 mConnectThread = null;
             }
             connected(mmSocket);
         }
-        
+
         public void cancel() {
             try {
                 mmSocket.close();
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
         }
     }
 
@@ -335,22 +369,23 @@ public class BluetoothService {
      */
     private class ConnectedThread extends Thread {
 
-        private final BluetoothSocket mmSocket;
+        private final BluetoothSocketWrapper mmSocket;
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
-        
-        public ConnectedThread(BluetoothSocket socket) {
+
+        public ConnectedThread(BluetoothSocketWrapper socket) {
             mmSocket = socket;
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             try {
                 tmpIn = socket.getInputStream();
                 tmpOut = socket.getOutputStream();
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
         }
-        
+
         public void run() {
             byte[] buffer = new byte[1024];
             int bytes;
@@ -360,7 +395,7 @@ public class BluetoothService {
                     if (bytes > 0) {
                         byte[] data = Arrays.copyOf(buffer, bytes);
                         if (mBluetoothListener != null) {
-                            ((BluetoothListener) mBluetoothListener).onReadData(mmSocket.getRemoteDevice(), data);
+                            ((BluetoothListener) mBluetoothListener).onReadData(mmSocket.getUnderlyingSocket().getRemoteDevice(), data);
                         }
                     }
                 } catch (IOException e) {
@@ -372,18 +407,139 @@ public class BluetoothService {
 
         /**
          * Write to the connected OutStream.
+         *
          * @param buffer The bytes to write
          */
         public void write(byte[] buffer, int start, int end) {
             try {
                 mmOutStream.write(buffer, start, end);
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
         }
 
         public void cancel() {
             try {
                 mmSocket.close();
-            } catch (IOException e) {}
+            } catch (IOException e) {
+            }
         }
+    }
+
+    public static interface BluetoothSocketWrapper {
+
+        InputStream getInputStream() throws IOException;
+
+        OutputStream getOutputStream() throws IOException;
+
+        String getRemoteDeviceName();
+
+        String getRemoteDeviceAddress();
+
+        void connect() throws IOException;
+
+
+        void close() throws IOException;
+
+        BluetoothSocket getUnderlyingSocket();
+
+    }
+
+    public static class NativeBluetoothSocket implements BluetoothSocketWrapper {
+
+        private BluetoothSocket socket;
+
+        public NativeBluetoothSocket(BluetoothSocket tmp) {
+            this.socket = tmp;
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return socket.getInputStream();
+        }
+
+        @Override
+        public OutputStream getOutputStream() throws IOException {
+            return socket.getOutputStream();
+        }
+
+        @Override
+        public void connect() throws IOException {
+            socket.connect();
+        }
+
+        @Override
+        public String getRemoteDeviceName() {
+            return socket.getRemoteDevice().getName();
+        }
+
+        @Override
+        public String getRemoteDeviceAddress() {
+            return socket.getRemoteDevice().getAddress();
+        }
+
+        @Override
+        public void close() throws IOException {
+            socket.close();
+        }
+
+        @Override
+        public BluetoothSocket getUnderlyingSocket() {
+            return socket;
+        }
+
+    }
+
+    public class FallbackBluetoothSocket extends NativeBluetoothSocket {
+
+        private BluetoothSocket fallbackSocket;
+
+        public FallbackBluetoothSocket(BluetoothSocket tmp) throws FallbackException {
+            super(tmp);
+            try {
+                Class<?> clazz = tmp.getRemoteDevice().getClass();
+                Class<?>[] paramTypes = new Class<?>[]{Integer.TYPE};
+                Method m = clazz.getMethod("createRfcommSocket", paramTypes);
+                Object[] params = new Object[]{Integer.valueOf(1)};
+                fallbackSocket = (BluetoothSocket) m.invoke(tmp.getRemoteDevice(), params);
+            } catch (Exception e) {
+                throw new FallbackException(e);
+            }
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return fallbackSocket.getInputStream();
+        }
+
+        @Override
+        public OutputStream getOutputStream() throws IOException {
+            return fallbackSocket.getOutputStream();
+        }
+
+
+        @Override
+        public void connect() throws IOException {
+            fallbackSocket.connect();
+        }
+
+
+        @Override
+        public void close() throws IOException {
+            fallbackSocket.close();
+        }
+
+    }
+
+    public static class FallbackException extends Exception {
+
+        /**
+         *
+         */
+        private static final long serialVersionUID = 1L;
+
+        public FallbackException(Exception e) {
+            super(e);
+        }
+
     }
 }

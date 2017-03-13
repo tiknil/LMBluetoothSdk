@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import co.lujun.lmbluetoothsdk.receiver.BlueToothReceiver;
+import co.lujun.lmbluetoothsdk.receiver.BluetoothReceiver;
 
 /**
  * Author: lujun(http://blog.lujun.co)
@@ -44,7 +44,7 @@ import co.lujun.lmbluetoothsdk.receiver.BlueToothReceiver;
 public abstract class Bluetooth {
 
     protected BluetoothAdapter mBluetoothAdapter;
-    protected BlueToothReceiver mReceiver;
+    protected BluetoothReceiver mReceiver;
     protected BaseListener mBluetoothListener;
     protected Context mContext;
 
@@ -62,8 +62,9 @@ public abstract class Bluetooth {
         filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
         filter.addAction(BluetoothDevice.ACTION_FOUND);
         filter.addAction(BluetoothAdapter.ACTION_SCAN_MODE_CHANGED);
+        filter.addAction(BluetoothDevice.ACTION_UUID);
 
-        mReceiver = new BlueToothReceiver(mBluetoothListener);
+        mReceiver = new BluetoothReceiver(mBluetoothListener);
         mContext.registerReceiver(mReceiver, filter);
     }
 

@@ -31,6 +31,11 @@ import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.os.ParcelUuid;
+import android.os.Parcelable;
+import android.util.Log;
+
+import java.util.UUID;
 
 import co.lujun.lmbluetoothsdk.base.BaseListener;
 
@@ -38,11 +43,11 @@ import co.lujun.lmbluetoothsdk.base.BaseListener;
  * Author: lujun(http://blog.lujun.co)
  * Date: 2016-1-15 10:52
  */
-public class BlueToothReceiver extends BroadcastReceiver {
+public class BluetoothReceiver extends BroadcastReceiver {
 
     private BaseListener mBluetoothListener;
 
-    public BlueToothReceiver(BaseListener listener){
+    public BluetoothReceiver(BaseListener listener){
         mBluetoothListener = listener;
     }
 
