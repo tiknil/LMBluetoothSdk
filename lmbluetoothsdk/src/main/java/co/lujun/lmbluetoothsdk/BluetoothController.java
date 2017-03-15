@@ -26,6 +26,7 @@
 
 package co.lujun.lmbluetoothsdk;
 
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
@@ -213,5 +214,14 @@ public class BluetoothController extends Bluetooth {
             return mBluetoothService.getConnectedDevice();
         }
         return null;
+    }
+
+    /**
+     * Allows to show BT enable system request
+     * @param activity activity to start system intent
+     */
+    public void requestBluetoothEnable(Activity activity, int requestId){
+        Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+        activity.startActivityForResult(enableIntent, requestId);
     }
 }
